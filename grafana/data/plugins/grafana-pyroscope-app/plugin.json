@@ -11,7 +11,8 @@
         "plugins": [],
         "extensions": {
             "exposedComponents": [
-                "grafana-o11yinsights-app/insights-launcher/v1"
+                "grafana-o11yinsights-app/insights-launcher/v1",
+                "grafana-adaptiveprofiles-app/resolution-boost/v1"
             ]
         }
     },
@@ -39,8 +40,8 @@
                 "path": "img/hero-image.png"
             }
         ],
-        "version": "1.11.0",
-        "updated": "2025-10-23",
+        "version": "1.12.0",
+        "updated": "2025-11-12",
         "links": [
             {
                 "name": "GitHub",

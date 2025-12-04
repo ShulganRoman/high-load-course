@@ -37,8 +37,8 @@
                 "path": "img/table.png"
             }
         ],
-        "version": "1.0.30",
-        "updated": "2025-10-22",
+        "version": "1.0.31",
+        "updated": "2025-11-19",
         "links": [
             {
                 "name": "Github",
@@ -68,7 +68,8 @@
             "exposedComponents": [
                 "grafana-adaptivelogs-app/temporary-exemptions/v1",
                 "grafana-lokiexplore-app/embedded-logs-exploration/v1",
-                "grafana-asserts-app/insights-timeline-widget/v1"
+                "grafana-asserts-app/insights-timeline-widget/v1",
+                "grafana/add-to-dashboard-form/v1"
             ]
         }
     },
@@ -81,6 +82,15 @@
                 ],
                 "title": "Insights Timeline Widget",
                 "description": "Widget for displaying insights timeline in other apps"
+            }
+        ],
+        "addedFunctions": [
+            {
+                "targets": [
+                    "grafana-exploretraces-app/get-logs-drilldown-link/v1"
+                ],
+                "title": "Open Logs Drilldown",
+                "description": "Returns url to logs drilldown app"
             }
         ],
         "addedLinks": [

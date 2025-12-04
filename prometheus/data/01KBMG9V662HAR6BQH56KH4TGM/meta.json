@@ -1,0 +1,17 @@
+{
+	"ulid": "01KBMG9V662HAR6BQH56KH4TGM",
+	"minTime": 1764835205255,
+	"maxTime": 1764842400000,
+	"stats": {
+		"numSamples": 213675,
+		"numSeries": 825,
+		"numChunks": 1650
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01KBMG9V662HAR6BQH56KH4TGM"
+		]
+	},
+	"version": 1
+}
