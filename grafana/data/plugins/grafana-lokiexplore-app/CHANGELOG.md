@@ -1,5 +1,80 @@
 # Changelog
 
+## 1.0.32
+
+##### Chores
+
+* **ci/cd:**  pin workflow to verison 4.0.0 (#1671) (7f01482e)
+* **deps:**
+  *  update dependency @types/lodash to v4.17.21 (#1661) (a775a87f)
+  *  update dependency @lezer/lr to v1.4.4 (#1660) (e4a528c0)
+  *  update dependency @babel/core to v7.28.5 (#1659) (b5b5fd46)
+  *  update grafana/shared-workflows/ action to (#1655) (5ab50003)
+  *  update grafana/grafana-enterprise:latest docker digest to 96a793a (#1654) (64cc204c)
+  *  update golang:1.24 docker digest to 7b13449 (#1653) (fc3cfde9)
+  *  update actions/checkout digest to 34e1148 (#1652) (534a2df4)
+  *  pin dependencies (#1651) (b80907a9)
+* **renovate:**  remove minimunReleaseAge (#1656) (b8468687)
+* **ci:**  update grafana levitate dependencies (#1646) (00b552bb)
+
+##### New Features
+
+* **fields:**  support `avg_over_time` for `int` fields (#1637) (8a5be4e0)
+* **lokiConfig:**  disable patterns if pattern_ingester_enabled is false (#1669) (b364f56c)
+* **embedded:**  allow hiding time picker (#1666) (0eaab841)
+* **links:**  add sortOrder support (#1649) (85e57038)
+* **time-picker:**  add rolling time window options (#1625) (038e5dfa)
+
+
+## 1.0.31
+
+##### Chores
+
+* **deps-dev:**  bump glob in the npm_and_yarn group across 1 directory (#1638) (787bb202)
+* **ci:**
+  *  update permissions (#1633) (fb786b2b)
+  *  use new token generation (#1619) (075a6415)
+  *  used outputs (#1610) (57575f65)
+  *  update deployment tools wf (#1603) (d4f4af3c)
+*  update nvmrc (#1628) (48aa341e)
+*  hide toast (#1605) (c8a7663d)
+*  comment local live reload (#1607) (1890b8b3)
+*  update playwright (#1606) (acf6cb1b)
+*  update border radii (#1602) (4c353583)
+*  set override modifier (#1599) (0bc9211b)
+* **deps:**
+  *  update dependency style-loader to v3.3.4 (#1614) (d1a05e05)
+  *  update grafana/alloy:latest docker digest to 8c7256f (#1613) (529289ea)
+  *  update golang:1.24 docker digest to 5034fa4 (#1612) (b46d194b)
+  *  pin grafana/plugin-ci-workflows action to ddc6565 (#1611) (d7b4bf10)
+  *  update dependency sass-loader to v13.3.3 (#1594) (7095a5b4)
+  *  update dependency eslint-config-prettier to v8.10.2 (#1593) (f3f2d9b9)
+  *  update golang:1.24 docker digest to 5056a22 (#1592) (552e5e21)
+* **config:**  migrate config renovate.json (#1596) (d8d23822)
+
+##### Documentation Changes
+
+*  Add patterns troubleshooting (#1600) (3055db7b)
+
+##### New Features
+
+* **time-picker:**  filter time ranges that exceed max retention (#1621) (010becaa)
+* **config:**  Support Loki config API endpoint (#1526) (23c627f2)
+* **Dashboards:**  Add to dashboard from any panel (#1608) (2d3d8c3d)
+* **Grafana Assistant:**  Improve context, provide questions, and cleanup (#1598) (c7024136)
+* **Extensions:**  expose a function to create URL to the app dynamically (#1573) (37b60a11)
+
+##### Bug Fixes
+
+* **Table:**  copy from the right source (#1643) (a444b2ac)
+*  logs volume not showing logs without detected_level (#1630) (01a42e4f)
+* **deps:**  update grafana packages (#1615) (b02e67a1)
+
+##### Other Changes
+
+*  bump version to 0.1.4 (#1618) (2742a609)
+
+
 ## 1.0.30
 
 ##### Chores

@@ -1,0 +1,17 @@
+{
+	"ulid": "01KBR05106QPA8MQAKT9QPMPVT",
+	"minTime": 1764952484967,
+	"maxTime": 1764957600000,
+	"stats": {
+		"numSamples": 80690,
+		"numSeries": 751,
+		"numChunks": 751
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01KBR05106QPA8MQAKT9QPMPVT"
+		]
+	},
+	"version": 1
+}
