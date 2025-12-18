@@ -1,0 +1,17 @@
+{
+	"ulid": "01KCRZK99DPJ9KEEN0354B1GEN",
+	"minTime": 1766059200479,
+	"maxTime": 1766066400000,
+	"stats": {
+		"numSamples": 483550,
+		"numSeries": 829,
+		"numChunks": 3056
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01KCRZK99DPJ9KEEN0354B1GEN"
+		]
+	},
+	"version": 1
+}
