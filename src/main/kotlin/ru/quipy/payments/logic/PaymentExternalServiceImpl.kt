@@ -2,9 +2,6 @@ package ru.quipy.payments.logic
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
@@ -37,13 +34,11 @@ class PaymentExternalSystemAdapterImpl(
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    private val semaphore = Semaphore(parallelRequests)
     private val rateLimiter = SlidingWindowRateLimiter(
         rateLimitPerSec.toLong(),
         Duration.ofSeconds(1),
     )
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val client = OkHttpClient.Builder()
         .connectTimeout(25, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
@@ -51,15 +46,11 @@ class PaymentExternalSystemAdapterImpl(
         .build()
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
-        scope.launch {
-            semaphore.withPermit {
-                if (rateLimiter.tick()) {
-                    sendRequest(paymentId, amount, paymentStartedAt, deadline)
-                } else {
-                    rateLimiter.tickBlocking()
-                    sendRequest(paymentId, amount, paymentStartedAt, deadline)
-                }
-            }
+        if (rateLimiter.tick()) {
+            sendRequest(paymentId, amount, paymentStartedAt, deadline)
+        } else {
+            rateLimiter.tickBlocking()
+            sendRequest(paymentId, amount, paymentStartedAt, deadline)
         }
     }
 

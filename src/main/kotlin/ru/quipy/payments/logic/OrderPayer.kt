@@ -9,15 +9,19 @@ import ru.quipy.common.utils.NamedThreadFactory
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import java.util.*
-import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.PriorityBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 @Service
 class OrderPayer {
 
     companion object {
         val logger: Logger = LoggerFactory.getLogger(OrderPayer::class.java)
+        private const val POOL_SIZE = 16
+        private const val MAX_BACKLOG = 480
+        private const val MAX_QUEUE_TO_EXPIRED = 266
     }
 
     @Autowired
@@ -26,24 +30,36 @@ class OrderPayer {
     @Autowired
     private lateinit var paymentService: PaymentService
 
+    private class PrioritizedTask(
+        val createdAt: Long,
+        private val task: Runnable
+    ) : Runnable {
+        override fun run() = task.run()
+    }
+
     private val paymentExecutor = ThreadPoolExecutor(
-        16,
-        16,
+        POOL_SIZE,
+        POOL_SIZE,
         0L,
         TimeUnit.MILLISECONDS,
-        LinkedBlockingQueue(400),
+        PriorityBlockingQueue(MAX_BACKLOG) { a, b ->
+            val ta = a as PrioritizedTask
+            val tb = b as PrioritizedTask
+            ta.createdAt.compareTo(tb.createdAt)
+        },
         NamedThreadFactory("payment-submission-executor"),
         CallerBlockingRejectedExecutionHandler()
     )
 
+    @OptIn(ExperimentalAtomicApi::class)
     fun processPayment(orderId: UUID, amount: Int, paymentId: UUID, deadline: Long): Long {
         val createdAt = System.currentTimeMillis()
 
-        if (paymentExecutor.queue.size > 224) {
-            return -1
+        if (paymentExecutor.queue.size > MAX_QUEUE_TO_EXPIRED) {
+            return -1L
         }
 
-        paymentExecutor.submit {
+        val runnable = Runnable {
             val createdEvent = paymentESService.create {
                 it.create(
                     paymentId,
@@ -52,9 +68,13 @@ class OrderPayer {
                 )
             }
 
-            logger.trace("Payment ${createdEvent.paymentId} for order $orderId created.")
+            logger.trace("Payment {} for order {} created.", createdEvent.paymentId, orderId)
             paymentService.submitPaymentRequest(paymentId, amount, createdAt, deadline)
         }
+
+        val task = PrioritizedTask(createdAt, runnable)
+
+        paymentExecutor.execute(task)
 
         return createdAt
     }
