@@ -1,0 +1,17 @@
+{
+	"ulid": "01KCVS90P1H4HE453MQ5V8P010",
+	"minTime": 1766153238101,
+	"maxTime": 1766160000000,
+	"stats": {
+		"numSamples": 455071,
+		"numSeries": 826,
+		"numChunks": 3222
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01KCVS90P1H4HE453MQ5V8P010"
+		]
+	},
+	"version": 1
+}
