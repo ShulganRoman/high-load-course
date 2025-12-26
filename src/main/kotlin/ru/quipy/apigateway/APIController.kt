@@ -7,25 +7,29 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import ru.quipy.common.utils.LeakingBucketRateLimiter
+import ru.quipy.common.utils.TokenBucketRateLimiter
 import ru.quipy.orders.repository.OrderRepository
 import ru.quipy.payments.logic.OrderPayer
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 @RestController
 class APIController {
 
     val logger: Logger = LoggerFactory.getLogger(APIController::class.java)
 
-//    private val rateLimiter = SlidingWindowRateLimiter(
-//        11,
-//        Duration.ofSeconds(1),
+//    private val rateLimiter = LeakingBucketRateLimiter(
+//        rate = 11,
+//        window = Duration.ofSeconds(1),
+//        bucketSize = 132
 //    )
 
-    private val rateLimiter = LeakingBucketRateLimiter(
+    private val rateLimiter = TokenBucketRateLimiter(
         rate = 11,
-        window = Duration.ofSeconds(1),
-        bucketSize = 132
+        bucketMaxCapacity = 300,
+        window = 1,
+        timeUnit = TimeUnit.SECONDS
     )
 
     @Autowired
@@ -79,13 +83,13 @@ class APIController {
         } ?: throw IllegalArgumentException("No such order $orderId")
 
         if (!rateLimiter.tick()) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build()
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", (System.currentTimeMillis() + 3000L).toString()).build()
         }
 
         val createdAt = orderPayer.processPayment(orderId, order.price, paymentId, deadline)
 
         if (createdAt == -1L) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build()
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", (System.currentTimeMillis() + 3000L).toString()).build()
         }
 
         return ResponseEntity.ok(PaymentSubmissionDto(createdAt, paymentId))
