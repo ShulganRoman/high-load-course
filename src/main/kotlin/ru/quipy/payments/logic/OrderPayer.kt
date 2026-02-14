@@ -8,8 +8,10 @@ import ru.quipy.common.utils.CallerBlockingRejectedExecutionHandler
 import ru.quipy.common.utils.NamedThreadFactory
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
+import java.time.Duration
 import java.util.*
 import java.util.concurrent.PriorityBlockingQueue
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -20,8 +22,7 @@ class OrderPayer {
     companion object {
         val logger: Logger = LoggerFactory.getLogger(OrderPayer::class.java)
         private const val POOL_SIZE = 16
-        private const val MAX_BACKLOG = 480
-        private const val MAX_QUEUE_TO_EXPIRED = 266
+        private const val MAX_BACKLOG = 16
     }
 
     @Autowired
@@ -31,8 +32,7 @@ class OrderPayer {
     private lateinit var paymentService: PaymentService
 
     private class PrioritizedTask(
-        val createdAt: Long,
-        private val task: Runnable
+        val createdAt: Long, private val task: Runnable
     ) : Runnable {
         override fun run() = task.run()
     }
@@ -48,23 +48,17 @@ class OrderPayer {
             ta.createdAt.compareTo(tb.createdAt)
         },
         NamedThreadFactory("payment-submission-executor"),
-        CallerBlockingRejectedExecutionHandler()
+        CallerBlockingRejectedExecutionHandler(Duration.ofMillis(0))
     )
 
     @OptIn(ExperimentalAtomicApi::class)
     fun processPayment(orderId: UUID, amount: Int, paymentId: UUID, deadline: Long): Long {
         val createdAt = System.currentTimeMillis()
 
-        if (paymentExecutor.queue.size > MAX_QUEUE_TO_EXPIRED) {
-            return -1L
-        }
-
         val runnable = Runnable {
             val createdEvent = paymentESService.create {
                 it.create(
-                    paymentId,
-                    orderId,
-                    amount
+                    paymentId, orderId, amount
                 )
             }
 
@@ -74,8 +68,12 @@ class OrderPayer {
 
         val task = PrioritizedTask(createdAt, runnable)
 
-        paymentExecutor.execute(task)
-
-        return createdAt
+        return try {
+            paymentExecutor.execute(task)
+            createdAt
+        } catch (e: RejectedExecutionException) {
+            logger.warn("Queue full or executor shutdown, payment rejected for $paymentId", e)
+            -1L
+        }
     }
 }

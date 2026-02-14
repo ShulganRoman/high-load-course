@@ -6,11 +6,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import ru.quipy.common.utils.LeakingBucketRateLimiter
 import ru.quipy.common.utils.TokenBucketRateLimiter
 import ru.quipy.orders.repository.OrderRepository
 import ru.quipy.payments.logic.OrderPayer
-import java.time.Duration
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -18,18 +16,9 @@ import java.util.concurrent.TimeUnit
 class APIController {
 
     val logger: Logger = LoggerFactory.getLogger(APIController::class.java)
-
-//    private val rateLimiter = LeakingBucketRateLimiter(
-//        rate = 11,
-//        window = Duration.ofSeconds(1),
-//        bucketSize = 132
-//    )
-
+    private val timeToRetry: Long = 700L
     private val rateLimiter = TokenBucketRateLimiter(
-        rate = 11,
-        bucketMaxCapacity = 300,
-        window = 1,
-        timeUnit = TimeUnit.SECONDS
+        rate = 14, bucketMaxCapacity = 7, window = 1, timeUnit = TimeUnit.SECONDS
     )
 
     @Autowired
@@ -47,6 +36,13 @@ class APIController {
 
     data class User(val id: UUID, val name: String)
 
+    private fun exceed(): ResponseEntity<PaymentSubmissionDto> {
+        logger.error("Retry after payment limit exceeded")
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", (System.currentTimeMillis() + timeToRetry).toString()).build()
+    }
+
     @PostMapping("/orders")
     fun createOrder(@RequestParam userId: UUID, @RequestParam price: Int): Order {
         val order = Order(
@@ -56,6 +52,7 @@ class APIController {
             OrderStatus.COLLECTING,
             price,
         )
+
         return orderRepository.save(order)
     }
 
@@ -68,9 +65,7 @@ class APIController {
     )
 
     enum class OrderStatus {
-        COLLECTING,
-        PAYMENT_IN_PROGRESS,
-        PAID,
+        COLLECTING, PAYMENT_IN_PROGRESS, PAID,
     }
 
     @PostMapping("/orders/{orderId}/payment")
@@ -82,21 +77,16 @@ class APIController {
             it
         } ?: throw IllegalArgumentException("No such order $orderId")
 
-        if (!rateLimiter.tick()) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", (System.currentTimeMillis() + 3000L).toString()).build()
-        }
-
         val createdAt = orderPayer.processPayment(orderId, order.price, paymentId, deadline)
 
-        if (createdAt == -1L) {
-            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", (System.currentTimeMillis() + 3000L).toString()).build()
+        if (!rateLimiter.tick() || createdAt == -1L) {
+            return exceed()
         }
 
         return ResponseEntity.ok(PaymentSubmissionDto(createdAt, paymentId))
     }
 
     class PaymentSubmissionDto(
-        val timestamp: Long,
-        val transactionId: UUID
+        val timestamp: Long, val transactionId: UUID
     )
 }
