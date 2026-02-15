@@ -9,8 +9,7 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 class CallerBlockingRejectedExecutionHandler(
-    private val maxWait: Duration = Duration.ofMinutes(30),
-    private val maxSize: Int = 100,
+    private val maxWait: Duration = Duration.ofSeconds(1),
 ) : RejectedExecutionHandler {
     companion object {
         val logger: Logger = LoggerFactory.getLogger(CallerBlockingRejectedExecutionHandler::class.java)
