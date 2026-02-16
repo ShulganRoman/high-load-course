@@ -11,7 +11,6 @@ import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.logic.PaymentAccountProperties
 import ru.quipy.payments.logic.PaymentAggregateState
-import ru.quipy.payments.logic.PaymentExternalSystemAdapter
 import ru.quipy.payments.logic.PaymentExternalSystemAdapterImpl
 import java.net.URI
 import java.net.http.HttpClient
@@ -43,7 +42,7 @@ class PaymentAccountsConfig {
     fun accountAdapters(
         paymentService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>,
         meter: MeterRegistry
-    ): List<PaymentExternalSystemAdapter> {
+    ): List<PaymentExternalSystemAdapterImpl> {
         val request = HttpRequest.newBuilder()
             .uri(URI("http://${paymentProviderHostPort}/external/accounts?serviceName=$serviceName&token=$token"))
             .GET()

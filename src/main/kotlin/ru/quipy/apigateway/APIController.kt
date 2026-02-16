@@ -16,9 +16,9 @@ import java.util.concurrent.TimeUnit
 class APIController {
 
     val logger: Logger = LoggerFactory.getLogger(APIController::class.java)
-    private val timeToRetry: Long = 1000L
+    private val timeToRetry: Long = 10000L
     private val rateLimiter = TokenBucketRateLimiter(
-        rate = 100, bucketMaxCapacity = 100, window = 1, timeUnit = TimeUnit.SECONDS
+        rate = 1100, bucketMaxCapacity = 2000, window = 1, timeUnit = TimeUnit.SECONDS
     )
 
     @Autowired
