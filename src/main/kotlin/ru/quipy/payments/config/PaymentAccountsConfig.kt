@@ -4,13 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.prometheusmetrics.PrometheusConfig
-import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.quipy.core.EventSourcingService
-import ru.quipy.metrics.PaymentMetricsService
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.logic.PaymentAccountProperties
 import ru.quipy.payments.logic.PaymentAggregateState
@@ -28,10 +25,6 @@ class PaymentAccountsConfig {
     companion object {
         private val javaClient = HttpClient.newBuilder().build()
         private val mapper = ObjectMapper().registerKotlinModule().registerModules(JavaTimeModule())
-        private val metricService: PaymentMetricsService =
-            PaymentMetricsService(
-                prometheusRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
-            )
     }
 
     @Value("\${payment.hostPort}")

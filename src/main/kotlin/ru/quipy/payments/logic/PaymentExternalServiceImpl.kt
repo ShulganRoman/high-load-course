@@ -39,7 +39,7 @@ class PaymentExternalSystemAdapterImpl(
     }
 
     private val repeatTimes = 4
-    private val timeToDrop = 1600L
+    private val timeToDrop = 3000L
 
     private val serviceName = properties.serviceName
     private val accountName = properties.accountName

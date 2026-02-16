@@ -18,7 +18,7 @@ class APIController {
     val logger: Logger = LoggerFactory.getLogger(APIController::class.java)
     private val timeToRetry: Long = 1000L
     private val rateLimiter = TokenBucketRateLimiter(
-        rate = 8, bucketMaxCapacity = 32, window = 1, timeUnit = TimeUnit.SECONDS
+        rate = 100, bucketMaxCapacity = 100, window = 1, timeUnit = TimeUnit.SECONDS
     )
 
     @Autowired
