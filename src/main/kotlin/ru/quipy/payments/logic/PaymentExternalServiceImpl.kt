@@ -83,8 +83,12 @@ class PaymentExternalSystemAdapterImpl(
             val uri = URI(
                 "http://$paymentProviderHostPort/external/process?" + "serviceName=$serviceName&token=$token&accountName=$accountName" + "&transactionId=$transactionId&paymentId=$paymentId&amount=$amount"
             )
-            val request = HttpRequest.newBuilder().uri(uri).timeout(Duration.ofMillis(timeToDrop))
-                .POST(HttpRequest.BodyPublishers.noBody()).build()
+            val request = HttpRequest
+                .newBuilder()
+                .uri(uri)
+                .timeout(Duration.ofMillis(timeToDrop))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build()
 
             val response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
 
