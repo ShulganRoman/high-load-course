@@ -4,12 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.micrometer.core.instrument.DistributionSummary
 import io.micrometer.core.instrument.MeterRegistry
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -52,7 +47,7 @@ class PaymentExternalSystemAdapterImpl(
         Duration.ofSeconds(1),
     )
 
-    val semaphore: Semaphore = Semaphore(parallelRequests)
+//    val semaphore: Semaphore = Semaphore(parallelRequests)
 
     private val client = OkHttpClient.Builder().callTimeout(timeToDrop, TimeUnit.MILLISECONDS).build()
     private var orderMap = HashMap<UUID, Long>()
@@ -60,30 +55,28 @@ class PaymentExternalSystemAdapterImpl(
     override fun performPaymentAsync(
         paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long
     ) {
-        CoroutineScope(Dispatchers.IO).launch {
-            logger.warn("[$accountName] Submitting payment request for payment $paymentId")
-            val transactionId = UUID.randomUUID()
+//        CoroutineScope(Dispatchers.IO).launch {
+        logger.warn("[$accountName] Submitting payment request for payment $paymentId")
+        val transactionId = UUID.randomUUID()
 
-            paymentESService.update(paymentId) {
-                it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
-            }
-            logger.info("[$accountName] Submit: $paymentId , txId: $transactionId")
-
-            for (attempt in 1..repeatTimes) {
-                val success = semaphore.withPermit {
-                    sendRequest(transactionId, paymentId, amount, paymentStartedAt)
-                }
-
-                recordRetryAttempt(attempt, success)
-                if (success) return@launch
-
-                val currentDeadline = orderMap.getOrDefault(paymentId, 0L)
-                if (currentDeadline > 0) {
-                    delay(currentDeadline)
-                }
-                orderMap[paymentId] = currentDeadline + requestAverageProcessingTime.toMillis()
-            }
+        paymentESService.update(paymentId) {
+            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
         }
+        logger.info("[$accountName] Submit: $paymentId , txId: $transactionId")
+
+        for (attempt in 1..repeatTimes) {
+            val success = sendRequest(transactionId, paymentId, amount, paymentStartedAt)
+
+            recordRetryAttempt(attempt, success)
+            if (success) return
+
+            val currentDeadline = orderMap.getOrDefault(paymentId, 0L)
+            if (currentDeadline > 0) {
+                Thread.sleep(currentDeadline)
+            }
+            orderMap[paymentId] = currentDeadline + requestAverageProcessingTime.toMillis()
+        }
+//        }
     }
 
     fun sendRequest(
