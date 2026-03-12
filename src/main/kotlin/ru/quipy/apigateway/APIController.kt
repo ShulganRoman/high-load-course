@@ -6,20 +6,18 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import ru.quipy.common.utils.TokenBucketRateLimiter
 import ru.quipy.orders.repository.OrderRepository
 import ru.quipy.payments.logic.OrderPayer
 import java.util.*
-import java.util.concurrent.TimeUnit
 
 @RestController
 class APIController {
 
     val logger: Logger = LoggerFactory.getLogger(APIController::class.java)
     private val timeToRetry: Long = 10000L
-    private val rateLimiter = TokenBucketRateLimiter(
-        rate = 1100, bucketMaxCapacity = 2000, window = 1, timeUnit = TimeUnit.SECONDS
-    )
+//    private val rateLimiter = TokenBucketRateLimiter(
+//        rate = 4000, bucketMaxCapacity = 8000, window = 1, timeUnit = TimeUnit.SECONDS
+//    )
 
     @Autowired
     private lateinit var orderRepository: OrderRepository
@@ -36,8 +34,8 @@ class APIController {
 
     data class User(val id: UUID, val name: String)
 
-    private fun exceed(): ResponseEntity<PaymentSubmissionDto> {
-        logger.error("Retry after payment limit exceeded")
+    private fun exceed(reason: String): ResponseEntity<PaymentSubmissionDto> {
+        logger.error("Retry after payment limit exceeded: {}", reason)
 
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .header("Retry-After", (System.currentTimeMillis() + timeToRetry).toString()).build()
@@ -77,10 +75,14 @@ class APIController {
             it
         } ?: throw IllegalArgumentException("No such order $orderId")
 
+//        if (!rateLimiter.tick()) {
+//            return exceed("rejected-rate-limit")
+//        }
+
         val createdAt = orderPayer.processPayment(orderId, order.price, paymentId, deadline)
 
-        if (!rateLimiter.tick() || createdAt == -1L) {
-            return exceed()
+        if (createdAt == -1L) {
+            return exceed("payment-executor-rejected")
         }
 
         return ResponseEntity.ok(PaymentSubmissionDto(createdAt, paymentId))

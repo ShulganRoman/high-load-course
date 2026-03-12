@@ -39,11 +39,10 @@ class PaymentExternalSystemAdapterImpl(
     private val repeatTimes = 3
     private val serviceName = properties.serviceName
     private val accountName = properties.accountName
-    private val requestAverageProcessingTime = properties.averageProcessingTime
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    private val timeToDrop = 20_000L
+    private val timeToDrop = 2000L
     private val rateLimiter = SlidingWindowRateLimiter(
         rateLimitPerSec.toLong(),
         Duration.ofSeconds(1)
@@ -54,7 +53,7 @@ class PaymentExternalSystemAdapterImpl(
     private val httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_2).build()
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
-        logger.warn("[$accountName] Submitting payment request for payment $paymentId")
+        logger.debug("[{}] Submitting payment request for payment {}", accountName, paymentId)
         val transactionId = UUID.randomUUID()
 
         paymentESService.update(paymentId) {
@@ -62,16 +61,16 @@ class PaymentExternalSystemAdapterImpl(
         }
 
         paymentScope.launch {
-            for (attempt in 1..repeatTimes) {
-                val success = semaphore.withPermit {
+            semaphore.withPermit {
+                repeat(repeatTimes) { attempt ->
                     rateLimiter.tickBlocking()
-                    sendRequest(transactionId, paymentId, amount, paymentStartedAt)
-                }
-                recordRetryAttempt(attempt, success)
-                if (success) break
 
-                val delayTime = (1000L * 2.0.pow(attempt.toDouble())).toLong()
-                delay(delayTime)
+                    val success = sendRequest(transactionId, paymentId, amount, paymentStartedAt)
+                    recordRetryAttempt(attempt + 1, success)
+                    if (success) return@repeat
+
+                    delay((1L * 2.0.pow((attempt + 1).toDouble())).toLong())
+                }
             }
         }
     }
@@ -95,14 +94,26 @@ class PaymentExternalSystemAdapterImpl(
             val body = try {
                 mapper.readValue(response.body(), ExternalSysResponse::class.java)
             } catch (e: Exception) {
-                logger.error(
-                    "[$accountName] [ERROR] Payment processed for txId: $transactionId, payment: $paymentId, result code: ${response.statusCode()}, reason: ${response.body()}",
+                logger.debug(
+                    "[{}] [ERROR] Payment processed for txId: {}, payment: {}, result code: {}, reason: {}",
+                    accountName,
+                    transactionId,
+                    paymentId,
+                    response.statusCode(),
+                    response.body(),
                     e
                 )
                 ExternalSysResponse(transactionId.toString(), paymentId.toString(), false, e.message)
             }
 
-            logger.warn("[$accountName] Payment processed for txId: $transactionId, payment: $paymentId, succeeded: ${body.result}, message: ${body.message}")
+            logger.debug(
+                "[{}] Payment processed for txId: {}, payment: {}, succeeded: {}, message: {}",
+                accountName,
+                transactionId,
+                paymentId,
+                body.result,
+                body.message
+            )
 
             paymentESService.update(paymentId) {
                 it.logProcessing(body.result, now(), transactionId, reason = body.message)
