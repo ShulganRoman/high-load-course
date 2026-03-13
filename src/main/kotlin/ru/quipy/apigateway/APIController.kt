@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.server.ResponseStatusException
 import ru.quipy.orders.repository.OrderRepository
 import ru.quipy.payments.logic.OrderPayer
 import java.util.*
@@ -70,10 +71,8 @@ class APIController {
     fun payOrder(@PathVariable orderId: UUID, @RequestParam deadline: Long): ResponseEntity<PaymentSubmissionDto> {
         val paymentId = UUID.randomUUID()
 
-        val order = orderRepository.findById(orderId)?.let {
-            orderRepository.save(it.copy(status = OrderStatus.PAYMENT_IN_PROGRESS))
-            it
-        } ?: throw IllegalArgumentException("No such order $orderId")
+        val order = orderRepository.findById(orderId)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "No such order $orderId")
 
 //        if (!rateLimiter.tick()) {
 //            return exceed("rejected-rate-limit")
@@ -84,6 +83,8 @@ class APIController {
         if (createdAt == -1L) {
             return exceed("payment-executor-rejected")
         }
+
+        orderRepository.save(order.copy(status = OrderStatus.PAYMENT_IN_PROGRESS))
 
         return ResponseEntity.ok(PaymentSubmissionDto(createdAt, paymentId))
     }

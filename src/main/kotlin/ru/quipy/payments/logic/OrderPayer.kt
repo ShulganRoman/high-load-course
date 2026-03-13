@@ -47,13 +47,13 @@ class OrderPayer {
 
         return try {
             paymentExecutor.submit {
-                val createdEvent = paymentESService.create {
-                    it.create(
-                        paymentId, orderId, amount
-                    )
-                }
-
-                logger.trace("Payment {} for order {} created.", createdEvent.paymentId, orderId)
+//                val createdEvent = paymentESService.create {
+//                    it.create(
+//                        paymentId, orderId, amount
+//                    )
+//                }
+//
+//                logger.trace("Payment {} for order {} created.", createdEvent.paymentId, orderId)
                 paymentService.submitPaymentRequest(paymentId, amount, createdAt, deadline)
             }
             createdAt

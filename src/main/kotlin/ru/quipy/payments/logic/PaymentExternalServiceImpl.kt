@@ -42,7 +42,7 @@ class PaymentExternalSystemAdapterImpl(
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    private val timeToDrop = 2000L
+    private val timeToDrop = 5000L
     private val rateLimiter = SlidingWindowRateLimiter(
         rateLimitPerSec.toLong(),
         Duration.ofSeconds(1)
@@ -53,12 +53,12 @@ class PaymentExternalSystemAdapterImpl(
     private val httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_2).build()
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
-        logger.debug("[{}] Submitting payment request for payment {}", accountName, paymentId)
+//        logger.debug("[{}] Submitting payment request for payment {}", accountName, paymentId)
         val transactionId = UUID.randomUUID()
 
-        paymentESService.update(paymentId) {
-            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
-        }
+//        paymentESService.update(paymentId) {
+//            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
+//        }
 
         paymentScope.launch {
             semaphore.withPermit {
@@ -67,9 +67,11 @@ class PaymentExternalSystemAdapterImpl(
 
                     val success = sendRequest(transactionId, paymentId, amount, paymentStartedAt)
                     recordRetryAttempt(attempt + 1, success)
-                    if (success) return@repeat
 
-                    delay((1L * 2.0.pow((attempt + 1).toDouble())).toLong())
+                    if (success) return@launch
+
+                    if (attempt + 1 < repeatTimes)
+                        delay((1L * 2.0.pow((attempt + 1).toDouble())).toLong())
                 }
             }
         }
@@ -106,18 +108,18 @@ class PaymentExternalSystemAdapterImpl(
                 ExternalSysResponse(transactionId.toString(), paymentId.toString(), false, e.message)
             }
 
-            logger.debug(
-                "[{}] Payment processed for txId: {}, payment: {}, succeeded: {}, message: {}",
-                accountName,
-                transactionId,
-                paymentId,
-                body.result,
-                body.message
-            )
-
-            paymentESService.update(paymentId) {
-                it.logProcessing(body.result, now(), transactionId, reason = body.message)
-            }
+//            logger.debug(
+//                "[{}] Payment processed for txId: {}, payment: {}, succeeded: {}, message: {}",
+//                accountName,
+//                transactionId,
+//                paymentId,
+//                body.result,
+//                body.message
+//            )
+//
+//            paymentESService.update(paymentId) {
+//                it.logProcessing(body.result, now(), transactionId, reason = body.message)
+//            }
 
             body.result
         } catch (e: Exception) {

@@ -17,19 +17,21 @@ class CallerBlockingRejectedExecutionHandler(
 
     // Even if event is rejected we will still keep it, trying to put in queue so that not to lose it!
     override fun rejectedExecution(r: Runnable, executor: ThreadPoolExecutor) {
-        if (!executor.isShutdown) {
-            try {
-                val queue = executor.queue
-                val offer = queue.offer(r, maxWait.toMillis(), TimeUnit.MILLISECONDS)
-                if (!offer) {
-                    throw RejectedExecutionException("Max wait time expired to queue task")
-                }
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw RejectedExecutionException("Interrupted", e)
-            }
-        } else {
+        if (executor.isShutdown) {
             throw RejectedExecutionException("Executor has been shut down")
+        }
+
+        try {
+            val queue = executor.queue
+            val offer = queue.offer(r, maxWait.toMillis(), TimeUnit.MILLISECONDS)
+            if (!offer) {
+                // Fallback to caller thread to apply backpressure instead of dropping requests.
+                logger.debug("Queue is full after waiting {} ms, running task in caller thread", maxWait.toMillis())
+                r.run()
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw RejectedExecutionException("Interrupted", e)
         }
     }
 }

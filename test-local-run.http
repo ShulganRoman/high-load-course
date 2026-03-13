@@ -10,8 +10,6 @@ Content-Type: application/json
   "processingTimeMillis": 1000
 }
 
-### 4m 10s
-
 ### Stop running test to save time and resources
 # @timeout 120
 POST http://localhost:1234/test/stop/{{serviceName}}
