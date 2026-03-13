@@ -36,4 +36,3 @@ build/
 
 /prometheus
 /grafana
-test*.http
