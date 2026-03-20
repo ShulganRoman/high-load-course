@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.DistributionSummary
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.*
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.slf4j.Logger
@@ -42,39 +43,78 @@ class PaymentExternalSystemAdapterImpl(
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    private val timeToDrop = 5000L
+    private val hedgedRetryCount = 3
+    private val hedgedRequestDelayMs = 200L
+    private val timeToDrop = 1600L
     private val rateLimiter = SlidingWindowRateLimiter(
-        rateLimitPerSec.toLong(),
-        Duration.ofSeconds(1)
+        rateLimitPerSec.toLong(), Duration.ofSeconds(1)
     )
     private val semaphore = Semaphore(parallelRequests)
     private val paymentScope =
         CoroutineScope(Executors.newFixedThreadPool(100).asCoroutineDispatcher() + SupervisorJob())
     private val httpClient = HttpClient.newBuilder().version(HttpClient.Version.HTTP_2).build()
+    private val requestLatency =
+        DistributionSummary.builder("request_latency").publishPercentiles(0.5, 0.7, 0.9, 0.99, 0.999, 0.9999)
+            .register(meterRegistry)
+
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
-//        logger.debug("[{}] Submitting payment request for payment {}", accountName, paymentId)
+        logger.debug("[{}] Submitting payment request for payment {}", accountName, paymentId)
         val transactionId = UUID.randomUUID()
 
-//        paymentESService.update(paymentId) {
-//            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
-//        }
+        paymentESService.update(paymentId) {
+            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
+        }
 
         paymentScope.launch {
             semaphore.withPermit {
                 repeat(repeatTimes) { attempt ->
-                    rateLimiter.tickBlocking()
-
-                    val success = sendRequest(transactionId, paymentId, amount, paymentStartedAt)
+                    val success = sendHedgedRequest(transactionId, paymentId, amount, paymentStartedAt)
                     recordRetryAttempt(attempt + 1, success)
 
                     if (success) return@launch
 
-                    if (attempt + 1 < repeatTimes)
-                        delay((1L * 2.0.pow((attempt + 1).toDouble())).toLong())
+                    if (attempt + 1 < repeatTimes) delay((1L * 2.0.pow((attempt + 1).toDouble())).toLong())
                 }
             }
         }
+    }
+
+    private suspend fun sendHedgedRequest(
+        transactionId: UUID, paymentId: UUID, amount: Int, paymentStartedAt: Long
+    ): Boolean = coroutineScope {
+        val totalRequests = 1 + hedgedRetryCount
+
+        val requests = (0 until totalRequests).map { requestIndex ->
+            async {
+                if (requestIndex > 0) delay(hedgedRequestDelayMs * requestIndex)
+                sendRequestWithRateLimit(transactionId, paymentId, amount, paymentStartedAt)
+            }
+        }
+
+        val pending = requests.toMutableSet()
+        while (pending.isNotEmpty()) {
+            val (completedRequest, result) = select {
+                pending.forEach { request ->
+                    request.onAwait { request to it }
+                }
+            }
+
+            pending.remove(completedRequest)
+            if (result) {
+                pending.forEach { it.cancel() }
+                return@coroutineScope true
+            }
+        }
+
+        false
+    }
+
+    private suspend fun sendRequestWithRateLimit(
+        transactionId: UUID, paymentId: UUID, amount: Int, paymentStartedAt: Long
+    ): Boolean {
+        rateLimiter.tickBlocking()
+        return sendRequest(transactionId, paymentId, amount, paymentStartedAt)
     }
 
     private suspend fun sendRequest(
@@ -84,12 +124,8 @@ class PaymentExternalSystemAdapterImpl(
             val uri = URI(
                 "http://$paymentProviderHostPort/external/process?" + "serviceName=$serviceName&token=$token&accountName=$accountName" + "&transactionId=$transactionId&paymentId=$paymentId&amount=$amount"
             )
-            val request = HttpRequest
-                .newBuilder()
-                .uri(uri)
-                .timeout(Duration.ofMillis(timeToDrop))
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build()
+            val request = HttpRequest.newBuilder().uri(uri).timeout(Duration.ofMillis(timeToDrop))
+                .POST(HttpRequest.BodyPublishers.noBody()).build()
 
             val response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
 
@@ -108,20 +144,22 @@ class PaymentExternalSystemAdapterImpl(
                 ExternalSysResponse(transactionId.toString(), paymentId.toString(), false, e.message)
             }
 
-//            logger.debug(
-//                "[{}] Payment processed for txId: {}, payment: {}, succeeded: {}, message: {}",
-//                accountName,
-//                transactionId,
-//                paymentId,
-//                body.result,
-//                body.message
-//            )
-//
-//            paymentESService.update(paymentId) {
-//                it.logProcessing(body.result, now(), transactionId, reason = body.message)
-//            }
+            logger.debug(
+                "[{}] Payment processed for txId: {}, payment: {}, succeeded: {}, message: {}",
+                accountName,
+                transactionId,
+                paymentId,
+                body.result,
+                body.message
+            )
+
+            paymentESService.update(paymentId) {
+                it.logProcessing(body.result, now(), transactionId, reason = body.message)
+            }
 
             body.result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.error("[$accountName] Payment failed for txId: $transactionId, payment: $paymentId", e)
             paymentESService.update(paymentId) {
@@ -135,19 +173,10 @@ class PaymentExternalSystemAdapterImpl(
     }
 
     private fun recordRetryAttempt(attempt: Int, success: Boolean) = meterRegistry.counter(
-        "payment_retry_attempts",
-        "attempt",
-        attempt.toString(),
-        "result",
-        if (success) "success" else "failure"
+        "payment_retry_attempts", "attempt", attempt.toString(), "result", if (success) "success" else "failure"
     ).increment()
 
-    fun requestLatency(duration: Double) =
-        DistributionSummary
-            .builder("request_latency")
-            .publishPercentiles(0.9, 0.99, 0.999, 0.9999)
-            .register(meterRegistry)
-            .record(duration)
+    fun requestLatency(duration: Double) = requestLatency.record(duration)
 
     override fun price() = properties.price
     override fun isEnabled() = properties.enabled

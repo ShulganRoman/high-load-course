@@ -7,18 +7,20 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.server.ResponseStatusException
+import ru.quipy.common.utils.TokenBucketRateLimiter
 import ru.quipy.orders.repository.OrderRepository
 import ru.quipy.payments.logic.OrderPayer
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 @RestController
 class APIController {
 
     val logger: Logger = LoggerFactory.getLogger(APIController::class.java)
-    private val timeToRetry: Long = 10000L
-//    private val rateLimiter = TokenBucketRateLimiter(
-//        rate = 4000, bucketMaxCapacity = 8000, window = 1, timeUnit = TimeUnit.SECONDS
-//    )
+    private val timeToRetry: Long = 1000L
+    private val rateLimiter = TokenBucketRateLimiter(
+        rate = 100, bucketMaxCapacity = 100, window = 1, timeUnit = TimeUnit.SECONDS
+    )
 
     @Autowired
     private lateinit var orderRepository: OrderRepository
@@ -74,9 +76,9 @@ class APIController {
         val order = orderRepository.findById(orderId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "No such order $orderId")
 
-//        if (!rateLimiter.tick()) {
-//            return exceed("rejected-rate-limit")
-//        }
+        if (!rateLimiter.tick()) {
+            return exceed("rejected-rate-limit")
+        }
 
         val createdAt = orderPayer.processPayment(orderId, order.price, paymentId, deadline)
 
