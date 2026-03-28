@@ -22,7 +22,7 @@ class OrderPayer {
     companion object {
         val logger: Logger = LoggerFactory.getLogger(OrderPayer::class.java)
         private const val POOL_SIZE = 50
-        private const val MAX_BACKLOG = 5_000
+        private const val MAX_BACKLOG = 50_000
     }
 
     @Autowired

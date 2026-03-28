@@ -2,6 +2,8 @@ package ru.quipy.payments.logic
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.github.resilience4j.circuitbreaker.CircuitBreaker
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 import io.micrometer.core.instrument.DistributionSummary
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.*
@@ -21,6 +23,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.pow
 
 // Advice: always treat time as a Duration
@@ -43,9 +46,9 @@ class PaymentExternalSystemAdapterImpl(
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    private val hedgedRetryCount = 4
+    private val hedgedRetryCount = 0
     private val hedgedRequestDelayMs = 200L
-    private val timeToDrop = 1600L
+    private val timeToDrop = 10000000L
     private val rateLimiter = SlidingWindowRateLimiter(
         rateLimitPerSec.toLong(), Duration.ofSeconds(1)
     )
@@ -56,6 +59,15 @@ class PaymentExternalSystemAdapterImpl(
     private val requestLatency =
         DistributionSummary.builder("request_latency").publishPercentiles(0.5, 0.7, 0.9, 0.99, 0.999, 0.9999)
             .register(meterRegistry)
+
+    private var circuitBreakerConfig = CircuitBreakerConfig.custom()
+        .failureRateThreshold(10f)
+        .slidingWindowSize(200)
+        .minimumNumberOfCalls(50)
+        .waitDurationInOpenState(Duration.ofSeconds(5))
+        .build()
+
+    private val circuitBreaker = CircuitBreaker.of("payment-provider-$accountName", circuitBreakerConfig)
 
 
     override fun performPaymentAsync(paymentId: UUID, amount: Int, paymentStartedAt: Long, deadline: Long) {
@@ -120,6 +132,21 @@ class PaymentExternalSystemAdapterImpl(
     private suspend fun sendRequest(
         transactionId: UUID, paymentId: UUID, amount: Int, paymentStartedAt: Long
     ): Boolean {
+        if (!circuitBreaker.tryAcquirePermission()) {
+            logger.warn(
+                "[{}] Circuit breaker is OPEN, skipping payment for txId: {}, payment: {}",
+                accountName,
+                transactionId,
+                paymentId
+            )
+            paymentESService.update(paymentId) {
+                it.logProcessing(false, now(), transactionId, reason = "circuit breaker open")
+            }
+            return false
+        }
+
+        val start = now()
+
         return try {
             val uri = URI(
                 "http://$paymentProviderHostPort/external/process?" + "serviceName=$serviceName&token=$token&accountName=$accountName" + "&transactionId=$transactionId&paymentId=$paymentId&amount=$amount"
@@ -128,6 +155,8 @@ class PaymentExternalSystemAdapterImpl(
                 .POST(HttpRequest.BodyPublishers.noBody()).build()
 
             val response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).await()
+
+            val duration = now() - start
 
             val body = try {
                 mapper.readValue(response.body(), ExternalSysResponse::class.java)
@@ -153,21 +182,35 @@ class PaymentExternalSystemAdapterImpl(
                 body.message
             )
 
+            if (body.result) {
+                circuitBreaker.onSuccess(duration, TimeUnit.MILLISECONDS)
+            } else {
+                circuitBreaker.onError(
+                    duration,
+                    TimeUnit.MILLISECONDS,
+                    RuntimeException(body.message ?: "payment provider returned false")
+                )
+            }
+
             paymentESService.update(paymentId) {
                 it.logProcessing(body.result, now(), transactionId, reason = body.message)
             }
 
             body.result
         } catch (e: CancellationException) {
+            circuitBreaker.releasePermission()
             throw e
         } catch (e: Exception) {
+            val duration = now() - start
+            circuitBreaker.onError(duration, TimeUnit.MILLISECONDS, e)
+
             logger.error("[$accountName] Payment failed for txId: $transactionId, payment: $paymentId", e)
             paymentESService.update(paymentId) {
                 it.logProcessing(false, now(), transactionId, reason = e.message)
             }
             false
         } finally {
-            val duration = now() - paymentStartedAt
+            val duration = now() - start
             requestLatency(duration.toDouble())
         }
     }
