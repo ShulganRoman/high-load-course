@@ -43,7 +43,7 @@ class PaymentExternalSystemAdapterImpl(
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    private val hedgedRetryCount = 3
+    private val hedgedRetryCount = 4
     private val hedgedRequestDelayMs = 200L
     private val timeToDrop = 1600L
     private val rateLimiter = SlidingWindowRateLimiter(
